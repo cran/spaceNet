@@ -1,0 +1,15 @@
+dc94436ef2ca7b70ea85d76ad669636e *DESCRIPTION
+56e7199800e521a54b086a1fe2f18253 *NAMESPACE
+88b6abe1aaa08f0b955676657384f2fc *R/initialize.R
+b973312ee50a9df65a840ee7315ce3d8 *R/logPosterior.R
+ae644904fcd1861fac932ca2ca79d335 *R/multiNet.R
+320e33f164aacdcb46fd9f2de8e8be07 *R/proposals.R
+546dafcd8f1f6dbb610e93817ecbfeb2 *R/utilities.R
+0739b981d6fdeb2d66abd30117e55a72 *R/zzz_figlet.R
+0abb8bd7605548080aeb1bbcc4353286 *README.md
+2e96b85fc577a45a964f85b0889f0964 *data/vickers.rda
+004d6ed62c880bc685480b9589eaaded *man/alphaRef.Rd
+4ef070ca086f3a7131bd8695d603fde2 *man/internal-functions.Rd
+7643e721071645bcfa3ccd01a28f9966 *man/multiNet.Rd
+feab2c095ae053fcce632514cef653b2 *man/spaceNet.Rd
+2b97d5d8a50d75a43fd8f3ce2633d3bd *man/vickers.Rd

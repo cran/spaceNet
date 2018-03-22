@@ -1,0 +1,12 @@
+# Export everything
+# exportPattern("^[^\\.]")
+
+export(multiNet, alphaRef)
+
+importFrom("stats", "as.dist", "cmdscale",
+           "cor", "dist", "rgamma",
+           "runif", "sd", "var")
+importFrom("utils", "flush.console")
+importFrom("utils", "setTxtProgressBar", "txtProgressBar")
+
+S3method("print", "multiNet")
