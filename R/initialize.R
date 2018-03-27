@@ -9,7 +9,7 @@ startZ <- function(Y, n, D, K)
   z <- vapply( 1:K, function(k) {
     distZ <- sna::geodist(Y[,,k])$gdist
     distZ[ is.infinite(distZ) ] <- 7^2
-    cmdscale( as.dist(distZ) )
+    cmdscale( as.dist(distZ), k = D )
   }, double(n*D) )
   z <- matrix(Rfast::rowmeans(z), ncol = D)
 

@@ -78,9 +78,9 @@ zProp_i <- function(i, Y_i, n, K, D, z, distZ_i, alpha, beta, ind,
 
   tmp <-vapply(1:K, function(k) dYW[,k]*z*beta[k] , numeric(D*n)) ##dim (D*n) K
   tmp <- vapply( 1:K, function(k)  sapply( seq(1,D*n, by =n),
-                                           function(x)  sum( tmp[x:(x+n-1),k][ind[,k]])), numeric(2)) ##dim D *K
+                                           function(x)  sum( tmp[x:(x+n-1),k][ind[,k]])), numeric(D)) ##dim D *K
 
-  meanZ_i <- rowSums( tmp*2*varZ_i)
+  meanZ_i <- if( D > 1) rowSums( tmp*2*varZ_i) else sum( tmp*2*varZ_i)
   varZ_i <- varZ_i + n/100   # inflate variance
   zNew_i <- MASS::mvrnorm(1, meanZ_i, diag(varZ_i, D))
 

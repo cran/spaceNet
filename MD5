@@ -1,9 +1,9 @@
-dc94436ef2ca7b70ea85d76ad669636e *DESCRIPTION
+8eb3b8b059b3788d5df680a36810eab6 *DESCRIPTION
 56e7199800e521a54b086a1fe2f18253 *NAMESPACE
-88b6abe1aaa08f0b955676657384f2fc *R/initialize.R
+4d1342d47712615b43fa4479b16fdf6d *R/initialize.R
 b973312ee50a9df65a840ee7315ce3d8 *R/logPosterior.R
 ae644904fcd1861fac932ca2ca79d335 *R/multiNet.R
-320e33f164aacdcb46fd9f2de8e8be07 *R/proposals.R
+5a1fd0853c03490cc7bada4fcde2b70f *R/proposals.R
 546dafcd8f1f6dbb610e93817ecbfeb2 *R/utilities.R
 0739b981d6fdeb2d66abd30117e55a72 *R/zzz_figlet.R
 0abb8bd7605548080aeb1bbcc4353286 *README.md
