@@ -3,18 +3,21 @@
 #
 
 
-startZ <- function(Y, n, D, K)
+
+startZ <- function(Y, n, D, K, noSendRec )
   # Initialize latent positions and distances
 {
   z <- vapply( 1:K, function(k) {
     distZ <- sna::geodist(Y[,,k])$gdist
-    distZ[ is.infinite(distZ) ] <- 7^2
-    cmdscale( as.dist(distZ), k = D )
+    lim <- max( distZ[ !is.infinite(distZ) ])
+    distZ[ is.infinite(distZ) ] <- lim+2
+    cmdscale( as.dist(distZ) )
   }, double(n*D) )
-  z <- matrix(Rfast::rowmeans(z), ncol = D)
+  z <- matrix(Rfast::rowmeans(z), ncol = D) #matrix( rowMeans(z), ncol = D) #
 
   z <- if ( D == 1 ) z/max(z) else apply(z, 2, function(u) u/max(u) )
-  distZ <- 3 * Rfast::Dist(z, square = TRUE)
+  distZ <- if( noSendRec) 3 *Rfast::Dist(z, square = TRUE) else
+    Rfast::Dist(z, square = TRUE)
 
   # starting values for muZ and sigmaZ
   MeanZOld_i <- z
@@ -157,6 +160,7 @@ startRec <- function(Y, arcSumY, n, K, receiver, gamma0)
 
 
 
+
 startLambda <- function(covariates, nC)
   # Initialize parameter for covariates
 {
@@ -174,14 +178,16 @@ startLambda <- function(covariates, nC)
 
 
 
-alphaRef <- function(Y, D = 2)
+alphaRef <- function(Y, D = 2, sender = NULL, receiver = NULL)
   # Intialize alpha in the reference network
 {
-  sender <- receiver <- NULL    # not implemented now
+
   if ( is.list(Y) ) Y <- list2array(Y)
   n <- nrow(Y[,, 1])
   pHat <- sum(Y[,,1], na.rm = TRUE)/(n*(n-1))
+
   out <- log( pHat/(1 -pHat) ) + 2
-  if( !is.null(sender) | !is.null(receiver) & out <= 0 ) out <- 0.001
+
+  if( !is.null(sender) | !is.null(receiver) & out < .01) out <- .01
   return(out)
 }

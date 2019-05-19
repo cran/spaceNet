@@ -114,6 +114,7 @@ lambdaProp_l <- function(l, Y, n, K, nC, lambdaCov, lambdaCovSum, muLambda_l, si
 }
 
 
+
 gammaThetaProp_i <- function(par_i_old, Y_i, n, K, distZ_i,i,
                              alpha, beta, gt, gammaTheta_i, otherPar,
                              lambdaCovSum_i, effect, effect1,         # effect1 is for the refernce nodes

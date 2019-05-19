@@ -7,7 +7,7 @@ Computes the value for the intercept in the reference network.
 }
 
 \usage{
-alphaRef(Y, D = 2)
+alphaRef(Y, D = 2, sender = NULL, receiver = NULL)
 }
 
 \arguments{
@@ -15,6 +15,7 @@ alphaRef(Y, D = 2)
 
 \item{D}{The dimension of the latent space, with \code{D > 0}. The default value is \code{D = 2}.}
 
+\item{sender, receiver}{The type of node-specific sender and receiver effects to be included in the model. If specified, these effects can be set to constant (\code{"const"}) or/and variable (\code{"var"}). By default, node-specific effects are not included in the model (\code{NULL}).}
 }
 
 \value{
@@ -27,11 +28,14 @@ The function computes the value for the intercept in the reference network (firs
 with \eqn{n}{n} the number of nodes in the network.
 Then, the reference intercept is computed as:
 \deqn{\log \Bigl( \frac{p^{(1)}}{1 -p^{(1)}} \Bigr) + 2.}{ log ( p_1 \ ( 1 - p_1) ) + 2.}
+When sender and/or receiver effects are included in the model, the intercept for the reference network is forced to be positive, see references.
 }
 
 
 \references{
 D'Angelo, S. and Murphy, T. B. and Alfò, M. (2018). Latent space modeling of multidimensional networks with application to the exchange of votes in the Eurovision Song Contest. \href{https://arxiv.org/abs/1803.07166}{arXiv}.
+
+D'Angelo, S. and Alfò, M. and Murphy, T. B. (2018). Node-specific effects in latent space modelling of multidimensional networks. \href{https://arxiv.org/abs/1807.03874}{arXiv}.
 }
 
 \examples{

@@ -4,7 +4,7 @@
 \alias{startSend}
 \alias{startRec}
 \alias{startLambda}
-\alias{showTrace}
+\alias{simMultiNet}
 \alias{list2array}
 \alias{sigmaFC}
 \alias{muFc}

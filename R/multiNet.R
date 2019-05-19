@@ -6,12 +6,13 @@ multiNet <- function( Y, niter = 1000, D = 2,
                       muA = 0, tauA = NULL, nuA = 3,
                       muB = 0, tauB = NULL, nuB = 3,
                       muL = 0, tauL = NULL, nuL = 3,
-                      alphaRef = 0.1,
-                      # sender = c("const", "var"), receiver = c("const", "var"),
-                      covariates = NULL, DIC = FALSE,
+                      alphaRef = NULL,
+                      sender = c("const", "var"), receiver = c("const", "var"),
+                      covariates = NULL, DIC = FALSE, WAIC = FALSE,
                       burnIn = round(niter*0.3), trace = TRUE, allChains = FALSE,
                       refSpace = NULL )
 {
+  if( D < 2) stop("Latent space dimension must be greater than 1")
   call <- match.call()
 
   # we like arrays
@@ -22,14 +23,18 @@ multiNet <- function( Y, niter = 1000, D = 2,
       covariates <- list2array(covariates)
     }
   }
-  # no sender and receiver
-  sender <- receiver <- NULL     # no sender and receiver for v1
+
+  # default alphaRef
+  if( is.null(alphaRef) ) alphaRef <- alphaRef(Y, D, sender, receiver)
+
+  # sender and receiver
   noSendRec <- is.null(sender) & is.null(receiver)
 
   # constants
   K <- dim(Y)[3]     # number of views
   n <- dim(Y)[1]     # number of nodes
   nn <- n*n
+
   # maximum correlation for 2 subsequential updates of the sender/receiver parameters
   boundGammaTheta <- 0.975
   boundA <- if ( noSendRec ) log( (log(n))/(n -log(n)) ) else 0   # lower bound for the alphas
@@ -42,9 +47,15 @@ multiNet <- function( Y, niter = 1000, D = 2,
   # create indicator variable
   ind <- !is.na(Y)
 
-  # store dBar values for DIC
+  # store values for DIC
   if( DIC ){
-    dBar <- rep(NA, niter)
+    dBar <- rep(NA, (niter -burnIn)+1)
+  }
+
+  # store values for WAIC
+  if( WAIC ){
+    lppdi <- rep(0, n*(n-1) )
+    logLppdi <- matrix(NA, nrow= n*(n-1) , ncol = (niter -burnIn)+1)
   }
 
   # tau hyperparameters
@@ -91,7 +102,7 @@ multiNet <- function( Y, niter = 1000, D = 2,
   arcSumY <- vapply( 1:K, function(k) sum(Y[,,k], na.rm = TRUE), double(1) )
 
   # starting values -------------------------------------------------------------------
-  inZ <- startZ(Y, n, D, K)
+  inZ <- startZ(Y, n, D, K, noSendRec)
   inLogit <- startLogit(Y, K, inZ$distZ, alphaRef, noSendRec, ind)
   theta <- startSend(Y, arcSumY, n, K, sender, theta0)
   gamma <- startRec(Y, arcSumY, n, K, receiver, gamma0)
@@ -125,7 +136,6 @@ multiNet <- function( Y, niter = 1000, D = 2,
   }
 
   if ( !is.null(covariates) ) {
-    # nC <- dim(covariates)[3]
     LAMBDA <- accLAMBDA  <- MLAMBDA <- SLAMBDA <- matrix(NA, niter + 1, nC)
   }
 
@@ -362,6 +372,7 @@ multiNet <- function( Y, niter = 1000, D = 2,
     ##-----------------------------------------------------------------
     #close update only z
 
+
     ###..............................................................
     if( !noSendRec){
       if(!is.null(sender)){
@@ -588,24 +599,43 @@ multiNet <- function( Y, niter = 1000, D = 2,
     ###..............................................................
 
     # compute first part DIC
-    if( DIC ){
-      dBar[it-1] <- -2*loglik(Y, n, K, alpha, beta,
-                              gammaTheta, distZ,
-                              lambdaCovSum,ind,
-                              noSendRec)
+    if( DIC & ( it > burnIn ) ){
+      dBar[(it-burnIn)] <- -2*loglik(Y, n, K, alpha, beta,
+                                     gammaTheta, distZ,
+                                     lambdaCovSum,ind,
+                                     noSendRec)
     }
+
+    if( WAIC & ( it > burnIn ) ){
+      logLppdiIt <- logPosterior(Y, n, K, alpha, beta,
+                                 muAlpha, sigmaAlpha, muBeta, sigmaBeta,
+                                 muLambda_l, sigmaLambda_l,
+                                 muA, tauA, nuA,
+                                 muB, tauB, nuB,
+                                 muL, tauL, nuL,
+                                 gammaTheta, 0, lambda,
+                                 z, distZ, lambdaCovSum,
+                                 ind, term = "alphaBeta", noSendRec, individual = TRUE)
+
+      lppdiIt <- exp( logLppdiIt)
+      lppdi <- lppdiIt +lppdi
+
+      logLppdi[, (it-burnIn)] <- logLppdiIt
+    }
+
   } # mcmc loop
 
   # output of the chain
   set <- (burnIn + 2):(niter + 1)
+  lset <- length(set)
   ALPHA_mean <- colMeans( ALPHA[set, ])
   ALPHA_sd <- apply( ALPHA[set, ], 2, sd)
   BETA_mean <- colMeans( BETA[set, ])
   BETA_sd <- apply( BETA[set, ], 2, sd)
-  accALPHABETA_rate <- colSums(accALPHABETA[set,])/(niter -burnIn -2)
+  accALPHABETA_rate <- colSums(accALPHABETA[set,])/lset
   #### accALPHABETA
 
-  accZ_rate <- rowSums( accZ[,set] )/(niter -burnIn -2)
+  accZ_rate <- rowSums( accZ[,set] )/lset
   Z_mean <- apply(Z[,,set], c(1,2), mean)
   Z_sd <- apply(Z[,,set], c(1,2), sd)
   distZ_mean <- as.matrix( dist( Z_mean )^2 )
@@ -613,12 +643,12 @@ multiNet <- function( Y, niter = 1000, D = 2,
   if( !is.null(receiver) ) {
     GAMMA_mean <- apply( GAMMA[,,set], c(1,2), mean)
     GAMMA_sd <- apply( GAMMA[,,set], c(1,2), sd)
-    accGAMMA_rate <- apply(accGAMMA[,,set], c(1,2), sum)/(niter -burnIn -2)
+    accGAMMA_rate <- apply(accGAMMA[,,set], c(1,2), sum)/lset
   } else GAMMA_mean <- gamma
   if( !is.null(sender) ){
     THETA_mean <- apply( THETA[,,set], c(1,2), mean)
     THETA_sd <- apply( THETA[,,set], c(1,2), sd)
-    accTHETA_rate <- apply( accTHETA[,,set], c(1,2), sum )/(niter -burnIn -2)
+    accTHETA_rate <- apply( accTHETA[,,set], c(1,2), sum )/lset
   } else THETA_mean <- theta
   if( !noSendRec ) {
     gammaTheta_mean <- list2array(
@@ -626,7 +656,7 @@ multiNet <- function( Y, niter = 1000, D = 2,
   } else gammaTheta_mean <- 1
 
   if( !is.null(covariates) ){
-    accLAMBDA_rate <- colSums(accLAMBDA[set,,drop = FALSE])/(niter -burnIn -2)
+    accLAMBDA_rate <- colSums(accLAMBDA[set,,drop = FALSE])/lset
     LAMBDA_mean <- colMeans(LAMBDA[set,,drop = FALSE])
     LAMBDA_sd <- apply( ALPHA[set,,drop = FALSE], 2, sd )
     lambdaCov_mean <- covariates * array( rep(LAMBDA_mean, each = nn), c(n, n, nC) )
@@ -642,31 +672,61 @@ multiNet <- function( Y, niter = 1000, D = 2,
                       gammaTheta_mean, distZ_mean,
                       lambdaCovSum_mean, ind,
                       noSendRec)
-    dBar <- mean( dBar[(burnIn+1):niter] )
+    dBar <- mean( dBar, na.rm = TRUE )
     DIC <- dHat + 2*( dBar - dHat )
   }
+
+  if( WAIC ){
+    llpd <-  mean( log( lppdi/lset ), na.rm = TRUE ) # log pointwise predictive density
+
+    PWAIC1 <- 2*mean( log( lppdi/lset ) - logLppdi/lset, na.rm= TRUE )
+    alphaHyp <- colMeans( MSALPHA[burnIn:niter,] )
+    betaHyp <- colMeans( MSBETA[burnIn:niter,] )
+
+    if( !is.null(covariates) ){
+      muLambda_lE <-  colMeans( MLAMBDA[burnIn:niter,] )
+      sigmaLambda_lE <-  colMeans( MLAMBDA[burnIn:niter,] )
+    } else{
+      muLambda_lE <- sigmaLambda_lE <- 0
+    }
+
+    estlogLppdi <- logPosterior(Y, n, K, c(alphaRef, ALPHA_mean),  c(1, BETA_mean),
+                                alphaHyp[1], alphaHyp[2], betaHyp[1], betaHyp[2],
+                                muLambda_lE, sigmaLambda_lE,
+                                muA, tauA, nuA,
+                                muB, tauB, nuB,
+                                muL, tauL, nuL,
+                                gammaTheta_mean, 0,
+                                if( !is.null(covariates) ) LAMBDA_mean else 0,
+                                Z_mean, distZ_mean, lambdaCovSum_mean,
+                                ind, term = "alphaBeta", noSendRec, individual = T)
+
+    PWAIC2 <- mean( (logLppdi -estlogLppdi)^2, na.rm =TRUE )
+    WAIC <- list( PWAIC1 = PWAIC1, PWAIC2 = PWAIC2 )
+  }
+
 
   # prepare output
   parameters <- list(alpha = list(mean = c(alphaRef, ALPHA_mean), sd = c(0, ALPHA_sd)),
                      beta = list(mean = c(1, BETA_mean), sd = c(0, BETA_sd)),
-                     gamma = if ( !is.null(receiver) ) {
-                       list(mean = GAMMA_mean, sd = GAMMA_sd) } else (list(mean = NULL, sd = NULL)),
                      theta = if ( !is.null(sender) ) {
                        list(mean = THETA_mean, sd = THETA_sd) } else (list(mean = NULL, sd = NULL)),
+                     gamma = if ( !is.null(receiver) ) {
+                       list(mean = GAMMA_mean, sd = GAMMA_sd) } else (list(mean = NULL, sd = NULL)),
                      lambda = if ( !is.null(covariates) ) {
                        list(mean = LAMBDA_mean, sd = LAMBDA_sd) } else (list(mean = NULL, sd = NULL))
   )
   latPos <- list(mean = Z_mean, sd = Z_sd)
   accRates <- list(alpha = accALPHABETA_rate[1], beta = accALPHABETA_rate[2],
-                   gamma = if (!is.null(receiver)) accGAMMA_rate else NULL,
                    theta = if (!is.null(sender)) accTHETA_rate else NULL,
+                   gamma = if (!is.null(receiver)) accGAMMA_rate else NULL,
                    lambda = if (!is.null(covariates)) accLAMBDA_rate else NULL,
                    latPos = accZ_rate)
   if ( allChains ) {
     allChains <- list(parameters = list(
       alpha = cbind(alphaRef, ALPHA[2:(niter+1),]), beta = cbind(1, BETA[2:(niter+1),]),
-      gamma = if (!is.null(receiver)) GAMMA[,,2:(niter+1)] else NULL,
       theta = if (!is.null(sender)) THETA[,,2:(niter+1)] else NULL,
+      gamma = if (!is.null(receiver)) GAMMA[,,2:(niter+1)] else NULL,
       lambda = if (!is.null(covariates)) LAMBDA[2:(niter+1),] else NULL),
       latPos = Z[,,2:(niter+1)],
       priorParameters = list(
@@ -682,11 +742,14 @@ multiNet <- function( Y, niter = 1000, D = 2,
   } else allChains <- NULL
 
   if ( !is.numeric(DIC) ) DIC <- NULL
+  if ( !is.list(WAIC) ) WAIC <- NULL
+
   out <- list(n = n, K = K, D = D, parameters = parameters,
               latPos = latPos, accRates = accRates,
-              DIC = DIC, allChains = allChains, corrRefSpace = corrZ,
+              DIC = DIC,  WAIC = WAIC,
+              allChains = allChains, corrRefSpace = corrZ,
               info = list(call = call, niter = niter, burnIn = burnIn,
-                          # receiver = receiver, sender = sender,
+                          sender = sender, receiver = receiver,
                           covariates = if( !is.null(covariates) ) TRUE else FALSE,
                           L = nC)
   )
@@ -699,43 +762,102 @@ print.multiNet <- function(x, ...)
 {
   alpha <- x$parameters$alpha$mean
   beta <- x$parameters$beta$mean
-  # gamma <- x$parameters$gamma$mean
-  # theta <- x$parameters$theta$mean
+  gamma <- x$parameters$gamma$mean
+  theta <- x$parameters$theta$mean
   lambda <- x$parameters$lambda$mean
   dic <- x$DIC
   nC <- x$info$L
+  if ( is.null(x$info$sender) ) { temp1 <- "null"
+  } else {
+    temp1 <- switch (x$info$sender,
+                     const = "constant",
+                     var = "variable")
+  }
+  if ( is.null(x$info$receiver) ) { temp2 <- "null"
+  } else {
+    temp2 <- switch (x$info$receiver,
+                     const = "constant",
+                     var = "variable")
+  }
 
   if ( is.null(nC) ) {
-    h1 <- paste(x$D, "dimensional latent space model")
-    h2 <- "    for multivariate networks"
-    sep <- paste0( rep("=", max(nchar(h1), nchar(h2)) + 5), collapse = "" )
-    cat("\n", sep, "\n")
-    cat("  ", h1, "\n")
-    cat("  ", h2, "\n")
-    cat("", sep, "\n", "\n")
-    cat(" View 1", " --- ", "P(y = 1) =", round(alpha[1], 2), "- 1.00*dZ", "\n")
-    for ( k in 2:x$K ) {
-      cat(" View", k, " --- ", "P(y = 1) =", round(alpha[k], 2), "-",
-          paste(round(beta[k], 2), "dZ", sep = "*"), "\n")
+    if( is.null(x$info$sender) & is.null(x$info$receiver)){
+      h1 <- paste(x$D, "dimensional latent space model")
+      h2 <- "    for multivariate networks"
+      sep <- paste0( rep("=", max(nchar(h1), nchar(h2)) + 5), collapse = "" )
+      cat("\n", sep, "\n")
+      cat("  ", h1, "\n")
+      cat("  ", h2, "\n")
+      cat("", sep, "\n", "\n")
+      cat(" View 1", " --- ", "P(y = 1) =", round(alpha[1], 2), "- 1.00*dZ", "\n")
+      for ( k in 2:x$K ) {
+        cat(" View", k, " --- ", "P(y = 1) =", round(alpha[k], 2), "-",
+            paste(round(beta[k], 2), "dZ", sep = "*"), "\n")
+      }
+      cat("\n")
+    }else{
+      h1 <- paste(x$D, "dimensional latent space model")
+      h2 <- "    for multivariate networks"
+      h3 <- paste("Sender effect: ", temp1)
+      h4 <- paste("Receiver effect: ", temp2)
+      sep <- paste0( rep("=", max(nchar(h1), nchar(h2)) + 5), collapse = "" )
+      cat("\n", sep, "\n")
+      cat("  ", h1, "\n")
+      cat("  ", h2, "\n")
+      cat("", sep, "\n", "\n")
+      cat(" View 1", " --- ", "P(y = 1) =", paste(round(alpha[1], 2), "phi", sep = "*"), "- 1.00*dZ", "\n")
+      for ( k in 2:x$K ) {
+        cat(" View", k, " --- ", "P(y = 1) =", paste(round(alpha[k], 2), "phi", sep ="*"), "-",
+            paste(round(beta[k], 2), "dZ", sep = "*"), "\n")
+      }
+      cat("\n")
+      cat("", h3, "\n")
+      cat("", h4, "\n")
     }
+
   } else {
-    covs <- paste0("X", 1:nC)
-    h1 <- paste("    ", x$D, "dimensional latent space model")
-    h2 <- "for multivariate networks, with covariates"
-    sep <- paste0( rep("=", max(nchar(h1), nchar(h2)) + 5), collapse = "" )
-    cat("\n", sep, "\n")
-    cat("  ", h1, "\n")
-    cat("  ", h2, "\n")
-    cat("", sep, "\n", "\n")
-    cat(" View 1", " --- ", "P(y = 1) =", round(alpha[1], 2), "- 1.00*dZ", "-",
-        paste(paste(round(lambda, 2), covs, sep = "*"), collapse = " - "), "\n" )
-    for ( k in 2:x$K ) {
-      cat(" View", k, " --- ", "P(y = 1) =", round(alpha[k], 2), "-",
-          paste(round(beta[k], 2), "dZ", sep = "*"),"-",
-          paste(paste(round(lambda, 2), covs, sep = "*"), collapse = " - "),
-          "\n")
+    if( is.null(x$info$sender) & is.null(x$info$receiver)){
+      covs <- paste0("X", 1:nC)
+      h1 <- paste("    ", x$D, "dimensional latent space model")
+      h2 <- "for multivariate networks, with covariates"
+      sep <- paste0( rep("=", max(nchar(h1), nchar(h2)) + 5), collapse = "" )
+      cat("\n", sep, "\n")
+      cat("  ", h1, "\n")
+      cat("  ", h2, "\n")
+      cat("", sep, "\n", "\n")
+      cat(" View 1", " --- ", "P(y = 1) =", round(alpha[1], 2), " - 1.00*dZ", "-",
+          paste(paste(round(lambda, 2), covs, sep = "*"), collapse = " - "), "\n" )
+      for ( k in 2:x$K ) {
+        cat(" View", k, " --- ", "P(y = 1) =", round(alpha[k], 2), "-",
+            paste(round(beta[k], 2), "dZ", sep = "*"),"-",
+            paste(paste(round(lambda, 2), covs, sep = "*"), collapse = " - "),
+            "\n")
+      }
+    } else{
+      covs <- paste0("X", 1:nC)
+      h1 <- paste("    ", x$D, "dimensional latent space model")
+      h2 <- "for multivariate networks, with covariates"
+      h3 <- paste("Sender effect: ", temp1)
+      h4 <- paste("Receiver effect: ", temp2)
+      sep <- paste0( rep("=", max(nchar(h1), nchar(h2)) + 5), collapse = "" )
+      cat("\n", sep, "\n")
+      cat("  ", h1, "\n")
+      cat("  ", h2, "\n")
+      cat("", sep, "\n", "\n")
+      cat(" View 1", " --- ", "P(y = 1) =", paste(round(alpha[1], 2), "phi", sep ="*" ),
+          "- 1.00*dZ", "-",
+          paste(paste(round(lambda, 2), covs, sep = "*"), collapse = " - "), "\n" )
+      for ( k in 2:x$K ) {
+        cat(" View", k, " --- ", "P(y = 1) =", paste(round(alpha[k], 2), "phi", sep = "*"), "-",
+            paste(round(beta[k], 2), "dZ", sep = "*"),"-",
+            paste(paste(round(lambda, 2), covs, sep = "*"), collapse = " - "),
+            "\n")
+      }
+      cat("\n")
+      cat("", h3, "\n")
+      cat("", h4, "\n")
     }
   }
-  if ( !is.null(dic) ) cat("\n", "DIC = ", dic, "\n")
+  #if ( !is.null(dic) ) cat("\n", "DIC = ", dic, "\n")
   cat("\n")
 }
